@@ -234,3 +234,59 @@ def test_tools_stream(mocked_tool_stream):
     )
     output = chain_response.text()
     assert output == "The installed version of LLM is 0.26."
+
+
+def test_text_content_keeps_text_chunks_only():
+    from llm_mistral import _text_content
+
+    assert _text_content("plain") == "plain"
+    assert _text_content(None) == ""
+    assert (
+        _text_content(
+            [
+                {"type": "thinking", "thinking": [{"type": "text", "text": "hmm"}]},
+                {"type": "text", "text": "Hello"},
+                {"type": "text", "text": " world"},
+            ]
+        )
+        == "Hello world"
+    )
+
+
+def test_mistral_large_4_supports_tools():
+    from llm_mistral import DEFAULT_ALIASES, tool_models
+
+    assert DEFAULT_ALIASES["mistral/mistral-large-4"] == "mistral-large-4"
+    assert "mistral/mistral-large-4" in tool_models
+
+
+def test_no_stream_chunked_content(httpx_mock):
+    httpx_mock.add_response(
+        url="https://api.mistral.ai/v1/chat/completions",
+        method="POST",
+        json={
+            "id": "cmpl-1",
+            "object": "chat.completion",
+            "created": 1702614202,
+            "model": "mistral-tiny",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "thinking",
+                                "thinking": [{"type": "text", "text": "hmm"}],
+                            },
+                            {"type": "text", "text": "Bonjour"},
+                        ],
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 1, "total_tokens": 2, "completion_tokens": 1},
+        },
+    )
+    model = llm.get_model("mistral-tiny")
+    assert model.prompt("Salut", stream=False).text() == "Bonjour"

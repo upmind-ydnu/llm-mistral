@@ -23,6 +23,7 @@ DEFAULT_ALIASES = {
     "mistral/magistral-medium-latest": "magistral-medium",
     "mistral/mistral-medium-latest": "mistral-medium",
     "mistral/mistral-large-latest": "mistral-large",
+    "mistral/mistral-large-4": "mistral-large-4",
     "mistral/codestral-mamba-latest": "codestral-mamba",
     "mistral/codestral-latest": "codestral",
     "mistral/ministral-3b-latest": "ministral-3b",
@@ -36,6 +37,7 @@ DEFAULT_ALIASES = {
 
 tool_models = {
     "mistral/mistral-large-latest",
+    "mistral/mistral-large-4",
     "mistral/mistral-medium-2312",
     "mistral/mistral-medium-2505",
     "mistral/mistral-medium-latest",
@@ -164,6 +166,20 @@ def register_commands(cli):
                 click.echo(model_id, err=True)
         else:
             click.echo("No changes", err=True)
+
+
+def _text_content(content):
+    # Reasoning models (mistral-large-4 with reasoning on) return content as a
+    # list of chunks: thinking chunks first, then text chunks. Keep the text.
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    return "".join(
+        chunk.get("text") or ""
+        for chunk in content
+        if isinstance(chunk, dict) and chunk.get("type") == "text"
+    )
 
 
 def _build_message_content(text, attachments):
@@ -515,7 +531,7 @@ class Mistral(_Shared, llm.KeyModel):
                                 delta = event["choices"][0]["delta"]
                                 self.extract_tool_calls(response, delta)
                                 if "content" in delta:
-                                    yield delta["content"]
+                                    yield _text_content(delta["content"])
                             except KeyError:
                                 pass
                     if usage:
@@ -533,7 +549,7 @@ class Mistral(_Shared, llm.KeyModel):
                     timeout=None,
                 )
                 api_response.raise_for_status()
-                yield api_response.json()["choices"][0]["message"]["content"]
+                yield _text_content(api_response.json()["choices"][0]["message"]["content"])
                 details = api_response.json()
                 usage = details.pop("usage", None)
                 self.extract_tool_calls(response, details["choices"][0]["message"])
@@ -633,7 +649,7 @@ class AsyncMistral(_Shared, llm.AsyncKeyModel):
                                 delta = event["choices"][0]["delta"]
                                 self.extract_tool_calls(response, delta)
                                 if "content" in delta:
-                                    yield delta["content"]
+                                    yield _text_content(delta["content"])
                             except KeyError:
                                 pass
                     if usage:
@@ -653,7 +669,7 @@ class AsyncMistral(_Shared, llm.AsyncKeyModel):
                 api_response.raise_for_status()
                 message = api_response.json()["choices"][0]["message"]
                 self.extract_tool_calls(response, message)
-                yield message["content"]
+                yield _text_content(message["content"])
                 details = api_response.json()
                 usage = details.pop("usage", None)
                 response.response_json = details
